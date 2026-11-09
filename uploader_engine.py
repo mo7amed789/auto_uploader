@@ -191,39 +191,68 @@ class InstagramUploaderEngine:
 
     def _generate_thumbnail(self, video_path: Path) -> Optional[Path]:
         """
-        استخراج صورة مصغرة (Thumbnail) للفيديو باستخدام ffmpeg لتفادي مشكلة MoviePy
+        استخراج صورة مصغرة (Thumbnail) للفيديو باستخدام ffmpeg مباشرة
+        يستخدم imageio_ffmpeg الذي يأتي مع instagrapi
         """
         thumb_path = video_path.parent / f"{video_path.stem}_thumb.jpg"
+
+        # الطريقة الأولى: ffmpeg subprocess مباشرة (الأسرع والأموثق)
         try:
             import imageio_ffmpeg
             ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+            # ضبط متغير البيئة لـ moviepy أيضاً
             os.environ["IMAGEIO_FFMPEG_EXE"] = ffmpeg_exe
 
-            # استخراج أول إطار (فريم) من بداية الفيديو
+            import subprocess
             cmd = [
                 ffmpeg_exe,
                 "-y",
-                "-ss", "0",
                 "-i", str(video_path),
+                "-ss", "00:00:01",   # الثانية الأولى أكثر أماناً من 0
                 "-vframes", "1",
+                "-vf", "scale=iw:ih",
                 "-q:v", "2",
                 str(thumb_path)
             ]
-            import subprocess
-            subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-            if thumb_path.exists() and thumb_path.stat().st_size > 0:
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=30
+            )
+            if result.returncode == 0 and thumb_path.exists() and thumb_path.stat().st_size > 100:
+                return thumb_path
+            # إذا فشل مع ss=1 ، نجرب ss=0
+            cmd[cmd.index("00:00:01")] = "00:00:00"
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+            if result.returncode == 0 and thumb_path.exists() and thumb_path.stat().st_size > 100:
                 return thumb_path
         except Exception as e:
-            print(f"Warning: ffmpeg thumbnail generation failed: {e}")
+            print(f"Warning: ffmpeg direct thumbnail failed: {e}")
 
-        # صورة احتياطية في حال فشل الاستخراج
+        # الطريقة الثانية: moviepy (إذا كان مثبتاً)
+        try:
+            import moviepy as mp
+            video = mp.VideoFileClip(str(video_path))
+            t = min(1.0, video.duration / 2)
+            video.save_frame(str(thumb_path), t=t)
+            video.close()
+            if thumb_path.exists() and thumb_path.stat().st_size > 100:
+                return thumb_path
+        except Exception as e:
+            print(f"Warning: moviepy thumbnail failed: {e}")
+
+        # الطريقة الاحتياطية: صورة سوداء بسيطة
         try:
             from PIL import Image
             img = Image.new("RGB", (1080, 1920), color=(18, 18, 18))
-            img.save(thumb_path, "JPEG")
-            return thumb_path
-        except Exception:
-            return None
+            img.save(thumb_path, "JPEG", quality=85)
+            if thumb_path.exists():
+                return thumb_path
+        except Exception as e:
+            print(f"Warning: PIL fallback thumbnail failed: {e}")
+
+        return None
 
     def upload_single_reel(
         self,

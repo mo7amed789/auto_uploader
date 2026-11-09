@@ -15,6 +15,21 @@ if sys.platform == "win32":
     except Exception:
         pass
 
+# ضبط مسار ffmpeg قبل أي import آخر (ضروري لـ instagrapi و moviepy)
+try:
+    import imageio_ffmpeg as _iio_ffmpeg
+    _ffmpeg_exe = _iio_ffmpeg.get_ffmpeg_exe()
+    os.environ["IMAGEIO_FFMPEG_EXE"] = _ffmpeg_exe
+    _ffmpeg_dir = os.path.dirname(_ffmpeg_exe)
+    # إنشاء رابط ffmpeg.exe إذا لم يكن موجوداً (يساعد moviepy في الكشف عنه)
+    _target_ffmpeg = os.path.join(_ffmpeg_dir, "ffmpeg.exe")
+    if not os.path.exists(_target_ffmpeg):
+        import shutil as _shutil
+        _shutil.copyfile(_ffmpeg_exe, _target_ffmpeg)
+    os.environ["PATH"] = _ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
+except Exception as _ffmpeg_err:
+    print(f"[تحذير] لم يتم ضبط ffmpeg: {_ffmpeg_err}")
+
 # إضافة المجلد الحالي للمسار
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
