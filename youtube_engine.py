@@ -18,11 +18,20 @@ if sys.platform == "win32":
     except Exception:
         pass
 
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
+try:
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaFileUpload
+    from google_auth_oauthlib.flow import InstalledAppFlow
+    from google.auth.transport.requests import Request
+    from google.oauth2.credentials import Credentials
+    YOUTUBE_DEPS_AVAILABLE = True
+except ImportError:
+    YOUTUBE_DEPS_AVAILABLE = False
+    build = None
+    MediaFileUpload = None
+    InstalledAppFlow = None
+    Request = None
+    Credentials = None
 
 # صلاحيات الرفع على يوتيوب
 SCOPES = [
@@ -72,6 +81,11 @@ class YouTubeUploaderEngine:
             if logger_callback:
                 logger_callback(msg)
             print(msg)
+
+        if not YOUTUBE_DEPS_AVAILABLE:
+            log("تنبيه: مكتبات Google API غير مثبتة في هذه البيئة (Python Environment).")
+            log("لتثبيتها، قم بتشغيل الأمر: pip install -r requirements.txt")
+            return False
 
         creds = None
 
