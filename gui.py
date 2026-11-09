@@ -449,7 +449,10 @@ class InstagramUploaderApp:
             messagebox.showwarning("تنبيه", "يرجى تسجيل الدخول إلى حساب إنستغرام أولاً.")
             return
 
-        pending_videos = [v for v in self.videos_queue if v["status"] in ["في الانتظار", "فشل"]]
+        pending_videos = [
+            v for v in self.videos_queue
+            if any(s in v["status"] for s in ["في الانتظار", "فشل"])
+        ]
         if not pending_videos:
             messagebox.showinfo("تنبيه", "لا توجد فيديوهات بحالة 'في الانتظار' للرفع.")
             return

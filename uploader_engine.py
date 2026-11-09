@@ -23,6 +23,7 @@ if sys.platform == "win32":
 try:
     import imageio_ffmpeg
     ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+    os.environ["IMAGEIO_FFMPEG_EXE"] = ffmpeg_exe
     ffmpeg_dir = os.path.dirname(ffmpeg_exe)
     target_ffmpeg = os.path.join(ffmpeg_dir, "ffmpeg.exe")
     if not os.path.exists(target_ffmpeg):
@@ -187,6 +188,42 @@ class InstagramUploaderEngine:
         except Exception:
             return False
 
+    def _generate_thumbnail(self, video_path: Path) -> Optional[Path]:
+        """
+        استخراج صورة مصغرة (Thumbnail) للفيديو باستخدام ffmpeg لتفادي مشكلة MoviePy
+        """
+        thumb_path = video_path.parent / f"{video_path.stem}_thumb.jpg"
+        try:
+            import imageio_ffmpeg
+            ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+            os.environ["IMAGEIO_FFMPEG_EXE"] = ffmpeg_exe
+
+            # استخراج أول إطار (فريم) من بداية الفيديو
+            cmd = [
+                ffmpeg_exe,
+                "-y",
+                "-ss", "0",
+                "-i", str(video_path),
+                "-vframes", "1",
+                "-q:v", "2",
+                str(thumb_path)
+            ]
+            import subprocess
+            subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+            if thumb_path.exists() and thumb_path.stat().st_size > 0:
+                return thumb_path
+        except Exception as e:
+            print(f"Warning: ffmpeg thumbnail generation failed: {e}")
+
+        # صورة احتياطية في حال فشل الاستخراج
+        try:
+            from PIL import Image
+            img = Image.new("RGB", (1080, 1920), color=(18, 18, 18))
+            img.save(thumb_path, "JPEG")
+            return thumb_path
+        except Exception:
+            return None
+
     def upload_single_reel(
         self,
         video_path: str,
@@ -211,11 +248,17 @@ class InstagramUploaderEngine:
             return None
 
         log(f"جاري تحضير ورفع الريل: {path.name} ...")
+        thumb_path = self._generate_thumbnail(path)
+
         try:
-            media = self.client.clip_upload(
-                path=path,
-                caption=caption,
-            )
+            kwargs = {
+                "path": path,
+                "caption": caption,
+            }
+            if thumb_path and thumb_path.exists():
+                kwargs["thumbnail"] = thumb_path
+
+            media = self.client.clip_upload(**kwargs)
             media_dict = media.dict() if hasattr(media, "dict") else {"pk": getattr(media, "pk", str(time.time()))}
             log(f"تم رفع الريل بنجاح! ID: {media_dict.get('pk', 'N/A')}")
             
@@ -235,6 +278,13 @@ class InstagramUploaderEngine:
         except Exception as e:
             log(f"فشل رفع الفيديو {path.name}: {str(e)}")
             return None
+        finally:
+            # تنظيف ملف الصورة المصغرة المؤقت
+            if thumb_path and thumb_path.exists():
+                try:
+                    thumb_path.unlink()
+                except Exception:
+                    pass
 
     def start_batch_upload(
         self,
