@@ -244,8 +244,35 @@ class InstagramUploaderApp:
 
     def _check_existing_session(self):
         if self.engine.session_file.exists():
-            self.lbl_status.config(text="يوجد ملف جلسة محفوظ (جاهز للفحص) ⏳", foreground="#0d6efd")
-            self.log("تم العثور على جلسة سابقة (session.json). يمكنك إدخال اسم المستخدم والضغط على 'تسجيل الدخول' للتفعيل.")
+            self.lbl_status.config(text="جاري استعادة الجلسة المحفوظة... ⏳", foreground="#ffc107")
+            self.log("تم العثور على جلسة محفوظة (session.json)، جاري الفحص والتفعيل التلقائي...")
+            
+            def _auto_load():
+                try:
+                    from instagrapi import Client
+                    self.engine.client = Client()
+                    self.engine.client.load_settings(self.engine.session_file)
+                    username = getattr(self.engine.client, "username", None)
+                    if not username and self.engine.client.user_id:
+                        try:
+                            info = self.engine.client.user_info_v1(int(self.engine.client.user_id))
+                            username = info.username
+                            self.engine.client.username = username
+                        except Exception:
+                            pass
+                    
+                    user_display = username or self.engine.client.user_id or "مستخدم"
+                    def _ok():
+                        self.lbl_status.config(text=f"متصل: @{user_display} ✅", foreground="#198754")
+                        self.log(f"تم تفعيل الجلسة المحفوظة بنجاح للحساب: @{user_display} ✅ جاهز للرفع!")
+                    self.root.after(0, _ok)
+                except Exception as e:
+                    def _err():
+                        self.lbl_status.config(text="انتهت الجلسة السابقة ❌", foreground="#dc3545")
+                        self.log(f"تعذر استعادة الجلسة السابقة: {e}")
+                    self.root.after(0, _err)
+
+            threading.Thread(target=_auto_load, daemon=True).start()
 
     def _show_session_help(self):
         msg = (
