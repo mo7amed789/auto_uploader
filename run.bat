@@ -7,7 +7,16 @@ echo ========================================================
 echo     Instagram Reels Auto-Uploader ^| اداة الرفع التلقائي
 echo ========================================================
 echo.
-echo جاري فحص وتشغيل البرنامج...
+
+:: فحص ما إذا كانت المكتبات مثبتة، وتثبيتها تلقائياً إن لزم الأمر
+python -c "import instagrapi, moviepy, imageio_ffmpeg" >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo [!] يبدو أن بعض المكتبات غير مثبتة، جاري تثبيتها تلقائياً لأول مرة...
+    pip install -r requirements.txt
+    echo.
+)
+
+echo جاري تشغيل واجهة البرنامج...
 python main.py
 if %ERRORLEVEL% NEQ 0 (
     echo.
