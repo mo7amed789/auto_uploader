@@ -260,24 +260,31 @@ class InstagramUploaderApp:
         t_row = ttk.Frame(c_right)
         t_row.pack(fill=tk.X, pady=(6, 0))
         ttk.Label(t_row, text="الفاصل بين الفيديوهات (بالدقائق):").pack(side=tk.LEFT)
-        self.spin_delay = ttk.Spinbox(t_row, from_=1, to=180, width=5, font=("Segoe UI", 9))
-        self.spin_delay.set(15)  # 15 دقيقة فاصل آمن جداً
+        self.spin_delay = ttk.Spinbox(t_row, from_=0, to=180, width=5, font=("Segoe UI", 9))
+        self.spin_delay.set(0)  # 0 = رفع فوري متتالي لجميع الفيديوهات
         self.spin_delay.pack(side=tk.LEFT, padx=5)
+        ttk.Label(t_row, text="(0 = رفع متتالي فوري بدون انتظار)", foreground="#6c757d", font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=2)
 
-        ttk.Label(c_right, text="⚠️ يُنصح بـ 15 دقيقة على الأقل لحماية الحساب من الحظر", foreground="#e65100", font=("Segoe UI", 8)).pack(anchor=tk.W, pady=(2, 0))
+        ttk.Label(c_right, text="⚠️ يُنصح بوضع دقائق انتظار لحسابات إنستغرام لتفادي القيود", foreground="#e65100", font=("Segoe UI", 8)).pack(anchor=tk.W, pady=(2, 0))
 
         # ---------------- 4. شريط التحكم ونوافذ السجل ----------------
         control_frame = ttk.Frame(main_frame)
         control_frame.pack(fill=tk.X, pady=(0, 6))
 
         self.btn_start = ttk.Button(control_frame, text="🚀 بدء الرفع التلقائي الآن", style="Primary.TButton", command=self._start_upload_process)
-        self.btn_start.pack(side=tk.LEFT, padx=5)
+        self.btn_start.pack(side=tk.LEFT, padx=4)
+
+        self.btn_skip = ttk.Button(control_frame, text="⏩ تخطي الانتظار ورفع التالي فوراً", style="Secondary.TButton", state=tk.DISABLED, command=self._skip_wait)
+        self.btn_skip.pack(side=tk.LEFT, padx=4)
 
         self.btn_stop = ttk.Button(control_frame, text="⏹ إيقاف العملية", style="Stop.TButton", state=tk.DISABLED, command=self._stop_upload_process)
-        self.btn_stop.pack(side=tk.LEFT, padx=5)
+        self.btn_stop.pack(side=tk.LEFT, padx=4)
+
+        self.lbl_countdown = ttk.Label(control_frame, text="", foreground="#0d6efd", font=("Segoe UI", 9, "bold"))
+        self.lbl_countdown.pack(side=tk.LEFT, padx=8)
 
         self.progress = ttk.Progressbar(control_frame, orient="horizontal", mode="determinate")
-        self.progress.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=15)
+        self.progress.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=8)
 
         # نافذة السجلات (Logs)
         log_frame = ttk.LabelFrame(main_frame, text=" 📋 سجل الأحداث والمتابعة المباشرة (Activity Log) ", padding=5)
@@ -620,6 +627,16 @@ class InstagramUploaderApp:
 
             self.root.after(0, _update)
 
+        def countdown_tracker(msg):
+            def _update_cd():
+                if msg:
+                    self.lbl_countdown.config(text=msg)
+                    self.btn_skip.config(state=tk.NORMAL)
+                else:
+                    self.lbl_countdown.config(text="")
+                    self.btn_skip.config(state=tk.DISABLED)
+            self.root.after(0, _update_cd)
+
         def runner():
             self.engine.start_batch_upload(
                 video_list=pending_videos,
@@ -631,22 +648,33 @@ class InstagramUploaderApp:
                 youtube_engine=self.youtube_engine,
                 youtube_privacy=yt_privacy,
                 progress_callback=progress_tracker,
+                countdown_callback=countdown_tracker,
                 logger_callback=self.log
             )
             def _finish():
                 self.btn_start.config(state=tk.NORMAL)
                 self.btn_stop.config(state=tk.DISABLED)
+                self.btn_skip.config(state=tk.DISABLED)
+                self.lbl_countdown.config(text="")
                 messagebox.showinfo("اكتمال", "اكتملت عملية المعالجة لقائمة الفيديوهات!")
             self.root.after(0, _finish)
 
         self.worker_thread = threading.Thread(target=runner, daemon=True)
         self.worker_thread.start()
 
+    def _skip_wait(self):
+        self.engine.skip_wait()
+        self.btn_skip.config(state=tk.DISABLED)
+        self.lbl_countdown.config(text="جاري بدء الفيديو التالي فوراً 🚀")
+        self.log("تم النقر على 'تخطي الانتظار' - جاري الانتقال لرفع الفيديو التالي...")
+
     def _stop_upload_process(self):
         if messagebox.askyesno("تأكيد", "هل أنت متأكد من رغبتك في إيقاف عملية الرفع التلقائي؟"):
             self.engine.stop()
             self.log("جاري طلب إيقاف الرفع التلقائي...")
             self.btn_stop.config(state=tk.DISABLED)
+            self.btn_skip.config(state=tk.DISABLED)
+            self.lbl_countdown.config(text="")
 
 
 def launch():

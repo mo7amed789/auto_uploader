@@ -52,6 +52,7 @@ class InstagramUploaderEngine:
         self.client: Optional[Client] = None
         self.is_running = False
         self.is_paused = False
+        self.skip_wait_event = False
         self.uploaded_history = self._load_history()
 
     def _load_history(self) -> Dict[str, dict]:
@@ -297,6 +298,7 @@ class InstagramUploaderEngine:
         youtube_engine = None,
         youtube_privacy: str = "public",
         progress_callback: Optional[Callable[[int, int, str, str], None]] = None,
+        countdown_callback: Optional[Callable[[str], None]] = None,
         logger_callback: Optional[Callable[[str], None]] = None,
     ):
         """
@@ -309,6 +311,7 @@ class InstagramUploaderEngine:
 
         self.is_running = True
         self.is_paused = False
+        self.skip_wait_event = False
         total = len(video_list)
 
         destinations = []
@@ -319,7 +322,10 @@ class InstagramUploaderEngine:
 
         log(f"بدء عملية الرفع التلقائي لعدد {total} فيديو...")
         log(f"المنصات المستهدفة: {' + '.join(destinations)}")
-        log(f"الفاصل الزمني المختار بين كل فيديو: {delay_minutes} دقيقة.")
+        if delay_minutes <= 0:
+            log("الفاصل الزمني: 0 (رفع فوري متتالي لجميع الفيديوهات بدون انتظار).")
+        else:
+            log(f"الفاصل الزمني المختار بين كل فيديو: {delay_minutes} دقيقة.")
 
         for index, item in enumerate(video_list):
             if not self.is_running:
@@ -354,7 +360,7 @@ class InstagramUploaderEngine:
                     if res_ig:
                         ig_success = True
                 except RateLimitError:
-                    log("توقف فوري لإنستغرام بسبب فرض قيود.")
+                    log("تنبيه: تم فرض قيود مؤقتة من إنستغرام على النشر السريع.")
                 except Exception as e:
                     log(f"خطأ إنستغرام: {e}")
 
@@ -395,24 +401,45 @@ class InstagramUploaderEngine:
             if progress_callback:
                 progress_callback(index + 1, total, video_path, status)
 
-            # إذا لم يكن هذا آخر فيديو وكانت العملية مستمرة، ننتظر الفاصل الزمني
+            # إذا لم يكن هذا آخر فيديو وكانت العملية مستمرة، ننتقل للفاصل أو التالي فوراً
             if index < total - 1 and self.is_running:
-                wait_seconds = max(delay_minutes * 60, 10)
-                log(f"سيبدأ العد التنازلي لمدة {delay_minutes} دقيقة قبل رفع الفيديو التالي...")
-                
-                start_wait = time.time()
-                while time.time() - start_wait < wait_seconds:
-                    if not self.is_running:
-                        log("تم إلغاء الانتظار وإيقاف العملية.")
-                        break
-                    remaining = int(wait_seconds - (time.time() - start_wait))
-                    mins, secs = divmod(remaining, 60)
-                    if remaining % 30 == 0 or remaining <= 5:
-                        log(f"الوقت المتبقي لرفع الفيديو التالي: {mins:02d}:{secs:02d}")
-                    time.sleep(1)
+                if delay_minutes <= 0:
+                    log("فاصل زمني 0: الانتقال مباشرة لرفع الفيديو التالي...")
+                    time.sleep(2)
+                else:
+                    wait_seconds = delay_minutes * 60
+                    log(f"سيبدأ العد التنازلي لمدة {delay_minutes} دقيقة قبل رفع الفيديو التالي (يمكنك الضغط على 'تخطي الانتظار' للرفع فوراً)...")
+                    self.skip_wait_event = False
+                    start_wait = time.time()
+                    while time.time() - start_wait < wait_seconds:
+                        if not self.is_running:
+                            log("تم إلغاء الانتظار وإيقاف العملية.")
+                            break
+                        if self.skip_wait_event:
+                            log("تم تخطي فترة الانتظار بطلب منك، بدء معالجة الفيديو التالي فوراً 🚀")
+                            self.skip_wait_event = False
+                            break
+
+                        remaining = int(wait_seconds - (time.time() - start_wait))
+                        mins, secs = divmod(remaining, 60)
+                        if countdown_callback:
+                            countdown_callback(f"⏳ الانتظار: باقي {mins:02d}:{secs:02d} قبل الفيديو التالي")
+                        if remaining % 30 == 0 or remaining <= 5:
+                            log(f"الوقت المتبقي لرفع الفيديو التالي: {mins:02d}:{secs:02d}")
+                        time.sleep(1)
+
+                    if countdown_callback:
+                        countdown_callback("")
 
         self.is_running = False
+        if countdown_callback:
+            countdown_callback("")
         log("\nانتهت معالجة جميع الفيديوهات في القائمة.")
+
+    def skip_wait(self):
+        """تخطي الانتظار والبدء بالفيديو التالي فوراً"""
+        self.skip_wait_event = True
 
     def stop(self):
         self.is_running = False
+        self.skip_wait_event = True
