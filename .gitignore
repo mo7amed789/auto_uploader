@@ -14,6 +14,11 @@ uploaded_history.json
 *.session
 *.log
 
+# YouTube sensitive credentials
+client_secrets.json
+youtube_token.json
+youtube_history.json
+
 # Media / temporary test files
 *.mp4
 *.mov
@@ -22,6 +27,7 @@ uploaded_history.json
 *.jpg
 *.jpeg
 *.png
+*_thumb.jpg
 
 # Environment & IDE
 .env

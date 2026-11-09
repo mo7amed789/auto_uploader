@@ -292,11 +292,15 @@ class InstagramUploaderEngine:
         caption_template: str,
         hashtags: str,
         delay_minutes: int,
+        upload_to_instagram: bool = True,
+        upload_to_youtube: bool = False,
+        youtube_engine = None,
+        youtube_privacy: str = "public",
         progress_callback: Optional[Callable[[int, int, str, str], None]] = None,
         logger_callback: Optional[Callable[[str], None]] = None,
     ):
         """
-        تشغيل قائمة الانتظار لرفع الفيديوهات واحداً تلو الآخر مع فاصل زمني آمن
+        تشغيل قائمة الانتظار لرفع الفيديوهات إلى إنستغرام و/أو يوتيوب
         """
         def log(msg: str):
             if logger_callback:
@@ -307,8 +311,15 @@ class InstagramUploaderEngine:
         self.is_paused = False
         total = len(video_list)
 
+        destinations = []
+        if upload_to_instagram:
+            destinations.append("Instagram Reels")
+        if upload_to_youtube:
+            destinations.append("YouTube Shorts")
+
         log(f"بدء عملية الرفع التلقائي لعدد {total} فيديو...")
-        log(f"الفاصل الزمني المختار بين كل فيديو: {delay_minutes} دقيقة (لحماية الحساب من الحظر).")
+        log(f"المنصات المستهدفة: {' + '.join(destinations)}")
+        log(f"الفاصل الزمني المختار بين كل فيديو: {delay_minutes} دقيقة.")
 
         for index, item in enumerate(video_list):
             if not self.is_running:
@@ -328,24 +339,59 @@ class InstagramUploaderEngine:
 
             log(f"\n[{index + 1}/{total}] جاري معالجة: {Path(video_path).name}")
 
-            success = False
-            try:
-                result = self.upload_single_reel(
-                    video_path=video_path,
-                    caption=clean_caption,
-                    logger_callback=logger_callback
-                )
-                if result:
-                    success = True
-            except RateLimitError:
-                if progress_callback:
-                    progress_callback(index + 1, total, video_path, "rate_limited")
-                log("توقف فوري بسبب فرض قيود من إنستغرام.")
-                break
-            except Exception as e:
-                log(f"خطأ غير متوقع: {e}")
+            ig_success = False
+            yt_success = False
 
-            status = "completed" if success else "failed"
+            # 1. الرفع إلى إنستغرام
+            if upload_to_instagram:
+                log(f"-> [إنستغرام] جاري رفع الريل...")
+                try:
+                    res_ig = self.upload_single_reel(
+                        video_path=video_path,
+                        caption=clean_caption,
+                        logger_callback=logger_callback
+                    )
+                    if res_ig:
+                        ig_success = True
+                except RateLimitError:
+                    log("توقف فوري لإنستغرام بسبب فرض قيود.")
+                except Exception as e:
+                    log(f"خطأ إنستغرام: {e}")
+
+            # 2. الرفع إلى يوتيوب
+            if upload_to_youtube and youtube_engine and youtube_engine.is_logged_in():
+                log(f"-> [يوتيوب] جاري رفع الشورت...")
+                try:
+                    raw_tags = [t.strip("#").strip() for t in hashtags.split() if t.strip()]
+                    res_yt = youtube_engine.upload_short_or_video(
+                        video_path=video_path,
+                        title=filename,
+                        description=clean_caption,
+                        tags=raw_tags,
+                        privacy_status=youtube_privacy,
+                        is_short=True,
+                        logger_callback=logger_callback
+                    )
+                    if res_yt:
+                        yt_success = True
+                except Exception as e:
+                    log(f"خطأ يوتيوب: {e}")
+
+            # تحديد حالة الفيديو النهائية
+            if upload_to_instagram and upload_to_youtube:
+                if ig_success and yt_success:
+                    status = "completed_both"
+                elif ig_success:
+                    status = "completed_ig_only"
+                elif yt_success:
+                    status = "completed_yt_only"
+                else:
+                    status = "failed"
+            elif upload_to_youtube:
+                status = "completed" if yt_success else "failed"
+            else:
+                status = "completed" if ig_success else "failed"
+
             if progress_callback:
                 progress_callback(index + 1, total, video_path, status)
 

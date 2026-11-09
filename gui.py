@@ -11,17 +11,20 @@ from tkinter import ttk, filedialog, messagebox, simpledialog
 from tkinter.scrolledtext import ScrolledText
 from pathlib import Path
 from uploader_engine import InstagramUploaderEngine
+from youtube_engine import YouTubeUploaderEngine
 
 
 class InstagramUploaderApp:
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("أداة الرفع التلقائي لإنستغرام ريلز | Instagram Auto-Uploader")
-        self.root.geometry("980x750")
-        self.root.minsize(850, 650)
+        self.root.title("أداة الرفع التلقائي للريلز والشورتس | Instagram & YouTube Auto-Uploader")
+        self.root.geometry("1020x780")
+        self.root.minsize(880, 680)
 
-        # محرك الرفع
-        self.engine = InstagramUploaderEngine(work_dir=os.path.dirname(os.path.abspath(__file__)))
+        # محركات الرفع (إنستغرام + يوتيوب)
+        work_dir = os.path.dirname(os.path.abspath(__file__))
+        self.engine = InstagramUploaderEngine(work_dir=work_dir)
+        self.youtube_engine = YouTubeUploaderEngine(work_dir=work_dir)
         self.worker_thread = None
 
         # قائمة الفيديوهات: [{"path": str, "name": str, "size": str, "status": str, "id": str}]
@@ -30,6 +33,7 @@ class InstagramUploaderApp:
         self._configure_styles()
         self._build_ui()
         self._check_existing_session()
+        self._check_existing_youtube_session()
 
     def _configure_styles(self):
         style = ttk.Style()
@@ -79,15 +83,18 @@ class InstagramUploaderApp:
         main_frame = ttk.Frame(self.root, padding=12)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # ---------------- 1. شريط الحساب وتسجيل الدخول ----------------
-        acc_frame = ttk.LabelFrame(main_frame, text=" 👤 إعدادات حساب إنستغرام (Instagram Account) ", padding=10)
-        acc_frame.pack(fill=tk.X, pady=(0, 10))
+        # ---------------- 1. إعدادات الحسابات والمنصات (إنستغرام + يوتيوب) ----------------
+        outer_acc_notebook = ttk.Notebook(main_frame)
+        outer_acc_notebook.pack(fill=tk.X, pady=(0, 10))
 
-        # تبويبات طرق تسجيل الدخول
-        self.login_notebook = ttk.Notebook(acc_frame)
+        # ===== تبويب إنستغرام =====
+        tab_ig = ttk.Frame(outer_acc_notebook, padding=8)
+        outer_acc_notebook.add(tab_ig, text=" 📸 حساب إنستغرام (Instagram Reels) ")
+
+        self.login_notebook = ttk.Notebook(tab_ig)
         self.login_notebook.pack(fill=tk.X, pady=(0, 5))
 
-        # التبويب 1: كود الجلسة (Session ID) - الأضمن والحل لمشكلة التطبيق القديم
+        # التبويب 1: كود الجلسة (Session ID)
         tab_session = ttk.Frame(self.login_notebook, padding=8)
         self.login_notebook.add(tab_session, text=" ⭐ عبر كود الجلسة (Session ID) - حل مشكلة تحديث التطبيق ")
 
@@ -130,8 +137,8 @@ class InstagramUploaderApp:
         self.btn_login = ttk.Button(p_row1, text="🔑 تسجيل الدخول", style="Primary.TButton", command=self._start_login)
         self.btn_login.pack(side=tk.LEFT, padx=10)
 
-        # صف الحالة والبروكسي العام
-        status_row = ttk.Frame(acc_frame)
+        # صف حالة إنستغرام والبروكسي
+        status_row = ttk.Frame(tab_ig)
         status_row.pack(fill=tk.X, pady=(6, 0))
 
         self.lbl_status = ttk.Label(status_row, text="الحالة: غير متصل ❌", foreground="#dc3545", font=("Segoe UI", 10, "bold"))
@@ -141,6 +148,35 @@ class InstagramUploaderApp:
         self.entry_proxy = ttk.Entry(status_row, width=35, font=("Segoe UI", 9))
         self.entry_proxy.pack(side=tk.LEFT, padx=5)
         ttk.Label(status_row, text="(http://ip:port)", foreground="#6c757d", font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=2)
+
+        # ===== تبويب يوتيوب =====
+        tab_yt = ttk.Frame(outer_acc_notebook, padding=10)
+        outer_acc_notebook.add(tab_yt, text=" ▶️ ربط قناة يوتيوب (YouTube Shorts) ")
+
+        yt_r1 = ttk.Frame(tab_yt)
+        yt_r1.pack(fill=tk.X, pady=4)
+
+        ttk.Label(yt_r1, text="ملف المفاتيح (client_secrets.json):").pack(side=tk.LEFT, padx=5)
+        self.entry_yt_secret = ttk.Entry(yt_r1, width=35, font=("Segoe UI", 9))
+        self.entry_yt_secret.insert(0, str(self.youtube_engine.client_secrets_file))
+        self.entry_yt_secret.pack(side=tk.LEFT, padx=5)
+
+        ttk.Button(yt_r1, text="📁 اختيار الملف", style="Secondary.TButton", command=self._browse_yt_secrets).pack(side=tk.LEFT, padx=4)
+        self.btn_login_yt = ttk.Button(yt_r1, text="🚀 ربط قناة يوتيوب", style="Primary.TButton", command=self._start_login_youtube)
+        self.btn_login_yt.pack(side=tk.LEFT, padx=10)
+
+        ttk.Button(yt_r1, text="❓ شرح الحصول على الملف", style="Secondary.TButton", command=self._show_yt_help).pack(side=tk.LEFT, padx=4)
+
+        yt_r2 = ttk.Frame(tab_yt)
+        yt_r2.pack(fill=tk.X, pady=(8, 2))
+
+        self.lbl_yt_status = ttk.Label(yt_r2, text="حالة يوتيوب: غير متصل ❌", foreground="#dc3545", font=("Segoe UI", 10, "bold"))
+        self.lbl_yt_status.pack(side=tk.LEFT, padx=5)
+
+        ttk.Label(yt_r2, text="خصوصية الشورتس (Privacy):").pack(side=tk.LEFT, padx=(30, 5))
+        self.combo_yt_privacy = ttk.Combobox(yt_r2, values=["public (علني)", "unlisted (غير مدرج)", "private (خاص)"], state="readonly", width=18, font=("Segoe UI", 9))
+        self.combo_yt_privacy.set("public (علني)")
+        self.combo_yt_privacy.pack(side=tk.LEFT, padx=5)
 
         # ---------------- 2. اختيار الفيديوهات وقائمة الانتظار ----------------
         queue_frame = ttk.LabelFrame(main_frame, text=" 🎬 قائمة الفيديوهات للرفع (Videos Queue) ", padding=10)
@@ -182,9 +218,23 @@ class InstagramUploaderApp:
 
         self.tree.pack(fill=tk.BOTH, expand=True)
 
-        # ---------------- 3. إعدادات النشر والكابشن ----------------
-        settings_frame = ttk.LabelFrame(main_frame, text=" 📝 إعدادات الوصف والجدولة (Caption & Timing) ", padding=10)
+        # ---------------- 3. إعدادات النشر والكابشن والمنصات ----------------
+        settings_frame = ttk.LabelFrame(main_frame, text=" 📝 إعدادات النشر والمنصات والجدولة (Platforms & Timing) ", padding=10)
         settings_frame.pack(fill=tk.X, pady=(0, 10))
+
+        # اختيار المنصات المستهدفة للرفع
+        plat_row = ttk.Frame(settings_frame)
+        plat_row.pack(fill=tk.X, pady=(0, 8))
+
+        ttk.Label(plat_row, text="🎯 المنصات المستهدفة للرفع:", font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=5)
+
+        self.var_upload_ig = tk.BooleanVar(value=True)
+        self.chk_ig = ttk.Checkbutton(plat_row, text="📸 إنستغرام ريلز (Instagram Reels)", variable=self.var_upload_ig)
+        self.chk_ig.pack(side=tk.LEFT, padx=12)
+
+        self.var_upload_yt = tk.BooleanVar(value=False)
+        self.chk_yt = ttk.Checkbutton(plat_row, text="▶️ يوتيوب شورتس (YouTube Shorts)", variable=self.var_upload_yt)
+        self.chk_yt.pack(side=tk.LEFT, padx=12)
 
         s_grid = ttk.Frame(settings_frame)
         s_grid.pack(fill=tk.X)
@@ -273,6 +323,72 @@ class InstagramUploaderApp:
                     self.root.after(0, _err)
 
             threading.Thread(target=_auto_load, daemon=True).start()
+
+    def _check_existing_youtube_session(self):
+        if self.youtube_engine.token_file.exists():
+            self.lbl_yt_status.config(text="جاري استعادة جلسة يوتيوب... ⏳", foreground="#ffc107")
+            def _check():
+                success = self.youtube_engine.authenticate(logger_callback=self.log)
+                def _update():
+                    if success:
+                        name = self.youtube_engine.channel_title or "متصل"
+                        self.lbl_yt_status.config(text=f"متصل: {name} ✅", foreground="#198754")
+                        self.log(f"تم تفعيل جلسة يوتيوب بنجاح للقناة: {name} ✅")
+                    else:
+                        self.lbl_yt_status.config(text="انتهت جلسة يوتيوب ❌", foreground="#dc3545")
+                self.root.after(0, _update)
+            threading.Thread(target=_check, daemon=True).start()
+
+    def _browse_yt_secrets(self):
+        file = filedialog.askopenfilename(
+            title="اختر ملف client_secrets.json",
+            filetypes=[("JSON Files", "*.json"), ("All Files", "*.*")]
+        )
+        if file:
+            self.entry_yt_secret.delete(0, tk.END)
+            self.entry_yt_secret.insert(0, file)
+
+    def _start_login_youtube(self):
+        secrets_path = self.entry_yt_secret.get().strip()
+        self.btn_login_yt.config(state=tk.DISABLED)
+        self.lbl_yt_status.config(text="جاري الاتصال بيوتيوب... ⏳", foreground="#ffc107")
+
+        def task():
+            success = self.youtube_engine.authenticate(
+                client_secrets_path=secrets_path if secrets_path else None,
+                logger_callback=self.log
+            )
+            def update_ui():
+                self.btn_login_yt.config(state=tk.NORMAL)
+                if success:
+                    name = self.youtube_engine.channel_title or "متصل"
+                    self.lbl_yt_status.config(text=f"متصل: {name} ✅", foreground="#198754")
+                    messagebox.showinfo("نجاح", f"تم ربط قناة يوتيوب بنجاح!\nالقناة: {name}")
+                else:
+                    self.lbl_yt_status.config(text="فشل الاتصال بيوتيوب ❌", foreground="#dc3545")
+                    messagebox.showerror("خطأ", "فشل ربط قناة يوتيوب. راجع سجل الأحداث للتحقق من السبب.")
+            self.root.after(0, update_ui)
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def _show_yt_help(self):
+        msg = (
+            "📌 كيفية الحصول على ملف client_secrets.json لربط يوتيوب:\n\n"
+            "1. توجه إلى موقع Google Cloud Console:\n"
+            "   https://console.cloud.google.com\n\n"
+            "2. أنشئ مشروعاً جديداً (New Project).\n\n"
+            "3. اذهب إلى 'APIs & Services' ثم 'Library' وابحث عن:\n"
+            "   'YouTube Data API v3' واضغط تفعيل (Enable).\n\n"
+            "4. اذهب إلى 'OAuth consent screen':\n"
+            "   اختر 'External' وضع اسم التطبيق وبريدك الإلكتروني.\n"
+            "   (أضف بريدك الشخصي في قسم 'Test users').\n\n"
+            "5. اذهب إلى 'Credentials' -> اضغط 'Create Credentials' -> 'OAuth client ID':\n"
+            "   اختر نوع التطبيق: 'Desktop App' واضغط إنشاء (Create).\n\n"
+            "6. اضغط على زر التحميل (Download JSON) للملف.\n"
+            "   سمّه 'client_secrets.json' وضعه في مجلد البرنامج أو اختره عبر زر 'اختيار الملف'.\n\n"
+            "7. اضغط على '🚀 ربط قناة يوتيوب'، وسيفتح لك المتصفح لتسجيل الدخول والموافقة مرة واحدة فقط!"
+        )
+        messagebox.showinfo("دليل ربط يوتيوب", msg)
 
     def _show_session_help(self):
         msg = (
@@ -445,8 +561,19 @@ class InstagramUploaderApp:
         self.lbl_queue_count.config(text=f"إجمالي الفيديوهات: {len(self.videos_queue)}")
 
     def _start_upload_process(self):
-        if not self.engine.is_logged_in():
-            messagebox.showwarning("تنبيه", "يرجى تسجيل الدخول إلى حساب إنستغرام أولاً.")
+        upload_ig = self.var_upload_ig.get()
+        upload_yt = self.var_upload_yt.get()
+
+        if not upload_ig and not upload_yt:
+            messagebox.showwarning("تنبيه", "يرجى اختيار منصة واحدة على الأقل للرفع (إنستغرام ريلز أو يوتيوب شورتس).")
+            return
+
+        if upload_ig and not self.engine.is_logged_in():
+            messagebox.showwarning("تنبيه", "يرجى تسجيل الدخول إلى حساب إنستغرام أولاً أو إلغاء تفعيل خيار إنستغرام.")
+            return
+
+        if upload_yt and not self.youtube_engine.is_logged_in():
+            messagebox.showwarning("تنبيه", "يرجى ربط قناة يوتيوب أولاً عبر تبويب يوتيوب أو إلغاء تفعيل خيار يوتيوب.")
             return
 
         pending_videos = [
@@ -464,6 +591,7 @@ class InstagramUploaderApp:
 
         caption_template = self.txt_caption.get("1.0", tk.END).strip()
         hashtags = self.entry_hashtags.get().strip()
+        yt_privacy = self.combo_yt_privacy.get().split()[0] if hasattr(self, "combo_yt_privacy") else "public"
 
         self.btn_start.config(state=tk.DISABLED)
         self.btn_stop.config(state=tk.NORMAL)
@@ -479,6 +607,9 @@ class InstagramUploaderApp:
                         arabic_status = {
                             "uploading": "جاري الرفع... ⏳",
                             "completed": "تم بنجاح ✅",
+                            "completed_both": "تم بنجاح (IG + YT) ✅",
+                            "completed_ig_only": "تم بنجاح (IG فقط) ⚠️",
+                            "completed_yt_only": "تم بنجاح (YT فقط) ⚠️",
                             "failed": "فشل ❌",
                             "rate_limited": "توقف (محدود) ⛔"
                         }.get(status, status)
@@ -495,6 +626,10 @@ class InstagramUploaderApp:
                 caption_template=caption_template,
                 hashtags=hashtags,
                 delay_minutes=delay,
+                upload_to_instagram=upload_ig,
+                upload_to_youtube=upload_yt,
+                youtube_engine=self.youtube_engine,
+                youtube_privacy=yt_privacy,
                 progress_callback=progress_tracker,
                 logger_callback=self.log
             )
