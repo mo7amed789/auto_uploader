@@ -9,7 +9,7 @@ echo ========================================================
 echo.
 
 :: فحص ما إذا كانت المكتبات مثبتة، وتثبيتها تلقائياً إن لزم الأمر
-python -c "import instagrapi, moviepy, imageio_ffmpeg" >nul 2>&1
+python -c "import instagrapi, imageio_ffmpeg" >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo [!] يبدو أن بعض المكتبات غير مثبتة، جاري تثبيتها تلقائياً لأول مرة...
     pip install -r requirements.txt
