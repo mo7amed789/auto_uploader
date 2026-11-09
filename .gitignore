@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# Instagram sensitive files & sessions
+session.json
+uploaded_history.json
+*.session
+*.log
+
+# Media / temporary test files
+*.mp4
+*.mov
+*.avi
+*.m4v
+*.jpg
+*.jpeg
+*.png
+
+# Environment & IDE
+.env
+.vscode/
+.idea/
